@@ -16,4 +16,14 @@ public interface SetTimerConfig extends Config
 	{
 		return true;
 	}
+
+	@ConfigItem(
+			keyName = "infobox",
+			name = "Show infobox when timer is active",
+			description = "Display an infobox while the timer is active"
+	)
+	default boolean infobox()
+	{
+		return true;
+	}
 }

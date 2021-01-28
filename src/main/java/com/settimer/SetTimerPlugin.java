@@ -5,14 +5,17 @@ import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
+import net.runelite.api.ItemID;
 import net.runelite.api.events.GameTick;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.events.ConfigChanged;
 import net.runelite.client.eventbus.Subscribe;
+import net.runelite.client.game.ItemManager;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.ui.ClientToolbar;
 import net.runelite.client.ui.NavigationButton;
+import net.runelite.client.ui.overlay.infobox.InfoBoxManager;
 import net.runelite.client.util.ImageUtil;
 import org.apache.commons.lang3.ArrayUtils;
 
@@ -34,6 +37,7 @@ public class SetTimerPlugin extends Plugin
 	private boolean inInferno = false;
 	private static final String CONFIG_GROUP = "settimer";
 	private static final String HIDE_KEY = "hide";
+	private static final String INFOBOX_KEY = "infobox";
 	private static final int INFERNO_REGION_ID = 9043;
 
 	@Getter(AccessLevel.PACKAGE)
@@ -48,15 +52,22 @@ public class SetTimerPlugin extends Plugin
 	@Inject
 	private ClientToolbar clientToolbar;
 
+	@Inject
+	private ItemManager itemManager;
+
+	@Inject
+	private InfoBoxManager infoBoxManager;
+
 	@Override
 	protected void startUp() throws Exception
 	{
+		final BufferedImage panelIcon = ImageUtil.getResourceStreamFromClass(getClass(), "/tzkal-zuk.png");
+
 		panel = injector.getInstance(SetTimerPanel.class);
-		final BufferedImage icon = ImageUtil.getResourceStreamFromClass(getClass(), "/tzkal-zuk.png");
-		ICON = new ImageIcon(icon).getImage();
+		ICON = new ImageIcon(panelIcon).getImage();
 		navButton = NavigationButton.builder()
 				.tooltip("Set Timer")
-				.icon(icon)
+				.icon(panelIcon)
 				.priority(6)
 				.panel(panel)
 				.build();
@@ -67,7 +78,8 @@ public class SetTimerPlugin extends Plugin
 	}
 
 	@Subscribe
-	public void onGameTick(GameTick tick) {
+	public void onGameTick(GameTick tick)
+	{
 		inInferno = isInInferno();
 		if (!inInferno && config.hide())
 		{
@@ -83,6 +95,8 @@ public class SetTimerPlugin extends Plugin
 	protected void shutDown() throws Exception
 	{
 		clientToolbar.removeNavigation(navButton);
+		infoBoxManager.removeIf(SetTimer.class::isInstance);
+		panel.Reset();
 	}
 
 	@Provides
@@ -92,13 +106,27 @@ public class SetTimerPlugin extends Plugin
 	}
 
 	@Subscribe
-	public void onConfigChanged(ConfigChanged event) {
-		if (!event.getGroup().equals(CONFIG_GROUP)) {
+	public void onConfigChanged(ConfigChanged event)
+	{
+		if (!event.getGroup().equals(CONFIG_GROUP))
+		{
 			return;
 		}
 
-		if (event.getKey().equals(HIDE_KEY)) {
+		if (event.getKey().equals(HIDE_KEY))
+		{
 			clientToolbar.addNavigation(navButton);
+		}
+		else if (event.getKey().equals(INFOBOX_KEY))
+		{
+			if (config.infobox() && SetTimerPanel.isActive())
+			{
+				infoBoxManager.addInfoBox(SetTimerPanel.setTimer);
+			}
+			else
+			{
+				infoBoxManager.removeIf(SetTimer.class::isInstance);
+			}
 		}
 	}
 
