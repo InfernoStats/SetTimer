@@ -106,6 +106,11 @@ public class SetTimerPanel extends PluginPanel {
         return state != ButtonState.WAITING;
     }
 
+    public static void AdvanceState()
+    {
+        button.doClick();
+    }
+
     public static void UpdateTimerLabel(int seconds)
     {
         final int minutes = seconds / 60;

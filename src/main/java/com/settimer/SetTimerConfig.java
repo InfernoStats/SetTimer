@@ -3,6 +3,10 @@ package com.settimer;
 import net.runelite.client.config.Config;
 import net.runelite.client.config.ConfigGroup;
 import net.runelite.client.config.ConfigItem;
+import net.runelite.client.config.Keybind;
+
+import java.awt.event.InputEvent;
+import java.awt.event.KeyEvent;
 
 @ConfigGroup("settimer")
 public interface SetTimerConfig extends Config
@@ -25,5 +29,15 @@ public interface SetTimerConfig extends Config
 	default boolean infobox()
 	{
 		return true;
+	}
+
+	@ConfigItem(
+			keyName = "hotkey",
+			name = "Timer Hotkey",
+			description = "Pressing this key combination will start and stop the timer",
+			position = 1
+	)
+	default Keybind timerHotkey() {
+		return new Keybind(KeyEvent.VK_S, InputEvent.CTRL_DOWN_MASK);
 	}
 }
