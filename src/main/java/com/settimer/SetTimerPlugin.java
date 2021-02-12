@@ -69,6 +69,10 @@ public class SetTimerPlugin extends Plugin
 			if (config.timerHotkey().matches(e)) {
 				if (!inInferno && config.hide())
 				{
+					if (SetTimerPanel.isActive())
+					{
+						SetTimerPanel.Reset();
+					}
 					return;
 				}
 				SetTimerPanel.AdvanceState();
