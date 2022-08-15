@@ -1,11 +1,10 @@
 package com.settimer;
 
 import com.google.inject.Provides;
-import lombok.AccessLevel;
-import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
-import net.runelite.api.events.GameTick;
+import net.runelite.api.ItemID;
+import net.runelite.api.events.GameStateChanged;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.events.ConfigChanged;
 import net.runelite.client.eventbus.Subscribe;
@@ -21,10 +20,7 @@ import net.runelite.client.util.ImageUtil;
 import org.apache.commons.lang3.ArrayUtils;
 
 import javax.inject.Inject;
-import javax.swing.*;
-import java.awt.Image;
 import java.awt.event.KeyEvent;
-import java.awt.image.BufferedImage;
 
 @Slf4j
 @PluginDescriptor(
@@ -34,22 +30,15 @@ import java.awt.image.BufferedImage;
 )
 public class SetTimerPlugin extends Plugin
 {
-	public static Image ICON;
+	private SetTimer setTimer;
 	private SetTimerPanel panel;
-	private boolean inInferno = false;
-	private static final String CONFIG_GROUP = "settimer";
-	private static final String HIDE_KEY = "hide";
-	private static final String INFOBOX_KEY = "infobox";
-	private static final int INFERNO_REGION_ID = 9043;
-
-	@Getter(AccessLevel.PACKAGE)
 	private NavigationButton navButton;
+
+	private static boolean inInferno = false;
+	private static final int INFERNO_REGION_ID = 9043;
 
 	@Inject
 	private Client client;
-
-	@Inject
-	private SetTimerConfig config;
 
 	@Inject
 	private ClientToolbar clientToolbar;
@@ -63,37 +52,37 @@ public class SetTimerPlugin extends Plugin
 	@Inject
 	private KeyManager keyManager;
 
+	@Inject
+	private SetTimerConfig config;
+
 	private final HotkeyListener setTimerKeyListener = new HotkeyListener(() -> config.timerHotkey()) {
 		@Override
 		public void keyPressed(KeyEvent e) {
 			if (config.timerHotkey().matches(e)) {
-				if (!inInferno && config.hide())
-				{
-					if (SetTimerPanel.isActive())
-					{
-						SetTimerPanel.Reset();
-					}
-					return;
-				}
-				SetTimerPanel.AdvanceState();
+				next();
 			}
 		}
 	};
 
+	@Provides
+	SetTimerConfig getConfig(ConfigManager configManager) {
+		return configManager.getConfig(SetTimerConfig.class);
+	}
+
 	@Override
-	protected void startUp() throws Exception
+	protected void startUp()
 	{
-		final BufferedImage panelIcon = ImageUtil.getResourceStreamFromClass(getClass(), "/tzkal-zuk.png");
+		setTimer = new SetTimer(itemManager.getImage(ItemID.TZREKZUK), this);
 
 		panel = injector.getInstance(SetTimerPanel.class);
-		ICON = new ImageIcon(panelIcon).getImage();
 		navButton = NavigationButton.builder()
-				.tooltip("Set Timer")
-				.icon(panelIcon)
-				.priority(6)
-				.panel(panel)
-				.build();
-		if (inInferno || !config.hide())
+			.tooltip("Set Timer")
+			.icon(ImageUtil.loadImageResource(getClass(), "/tzkal-zuk.png"))
+			.priority(6)
+			.panel(panel)
+			.build();
+
+		if (isInInferno() || !config.hide())
 		{
 			clientToolbar.addNavigation(navButton);
 		}
@@ -101,8 +90,49 @@ public class SetTimerPlugin extends Plugin
 		keyManager.registerKeyListener(setTimerKeyListener);
 	}
 
+	@Override
+	protected void shutDown()
+	{
+		keyManager.unregisterKeyListener(setTimerKeyListener);
+		clientToolbar.removeNavigation(navButton);
+		infoBoxManager.removeIf(SetTimer.class::isInstance);
+
+		panel.reset();
+	}
+
 	@Subscribe
-	public void onGameTick(GameTick tick)
+	public void onConfigChanged(ConfigChanged event)
+	{
+		if (!event.getGroup().equals(SetTimerConfig.GROUP))
+		{
+			return;
+		}
+
+		if (event.getKey().equals("hide"))
+		{
+			if (!inInferno && config.hide())
+			{
+				clientToolbar.removeNavigation(navButton);
+			}
+			else
+			{
+				clientToolbar.addNavigation(navButton);
+			}
+		}
+
+		if (event.getKey().equals("infobox"))
+		{
+			infoBoxManager.removeIf(SetTimer.class::isInstance);
+
+			if (config.infobox() && setTimer.getState() != SetTimerState.IDLE)
+			{
+				infoBoxManager.addInfoBox(setTimer);
+			}
+		}
+	}
+
+	@Subscribe
+	public void onGameStateChanged(GameStateChanged e)
 	{
 		inInferno = isInInferno();
 		if (!inInferno && config.hide())
@@ -115,44 +145,46 @@ public class SetTimerPlugin extends Plugin
 		}
 	}
 
-	@Override
-	protected void shutDown() throws Exception
+	public void next()
 	{
-		keyManager.unregisterKeyListener(setTimerKeyListener);
-		clientToolbar.removeNavigation(navButton);
-		infoBoxManager.removeIf(SetTimer.class::isInstance);
-		panel.Reset();
-	}
+		switch (setTimer.getState()){
+			case IDLE:
+				setTimer.start();
+				setTimer.setState(SetTimerState.STARTED);
+				panel.setButtonText("Pause");
 
-	@Provides
-	SetTimerConfig provideConfig(ConfigManager configManager)
-	{
-		return configManager.getConfig(SetTimerConfig.class);
-	}
+				if (config.infobox())
+				{
+					infoBoxManager.addInfoBox(setTimer);
+				}
+				break;
+			case STARTED:
+				setTimer.stop();
+				setTimer.setState(SetTimerState.PAUSED);
+				panel.setButtonText("Resume");
+				break;
+			case PAUSED:
+				setTimer.start();
+				setTimer.setState(SetTimerState.RESUMED);
+				panel.setButtonText("Reset");
+				break;
+			case RESUMED:
+				setTimer.stop();
+				setTimer.setState(SetTimerState.IDLE);
+				panel.setButtonText("Start");
 
-	@Subscribe
-	public void onConfigChanged(ConfigChanged event)
-	{
-		if (!event.getGroup().equals(CONFIG_GROUP))
-		{
-			return;
-		}
-
-		if (event.getKey().equals(HIDE_KEY))
-		{
-			clientToolbar.addNavigation(navButton);
-		}
-		else if (event.getKey().equals(INFOBOX_KEY))
-		{
-			if (config.infobox() && SetTimerPanel.isActive())
-			{
-				infoBoxManager.addInfoBox(SetTimerPanel.setTimer);
-			}
-			else
-			{
 				infoBoxManager.removeIf(SetTimer.class::isInstance);
-			}
+				break;
+			default:
+				break;
 		}
+
+		update();
+	}
+
+	public void update()
+	{
+		panel.setTimerText(setTimer.getText());
 	}
 
 	private boolean isInInferno()
